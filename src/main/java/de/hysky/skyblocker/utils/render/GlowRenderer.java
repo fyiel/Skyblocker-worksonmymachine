@@ -46,7 +46,15 @@ public class GlowRenderer implements AutoCloseable {
 
 	public void updateGlowDepthTexDepth() {
 		tryUpdateDepthTexture();
-		RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(this.client.getMainRenderTarget().getDepthTexture(), this.glowDepthTexture, 0, 0, 0, 0, 0, this.glowDepthTexture.getWidth(0), this.glowDepthTexture.getHeight(0));
+		GpuTexture srcDepth = this.client.getMainRenderTarget().getDepthTexture();
+		// Vanilla resizes the main render target at the start of the frame, so the dimensions
+		// normally match. Mods that alter render loop ordering, or window systems that deliver
+		// resize events outside the scheduled poll, can leave the dimensions mismatched for a
+		// frame. The copy is skipped on such frames because a copy with mismatched dimensions
+		// reads out of bounds and produces corrupted frames.
+		if (srcDepth.getWidth(0) == this.glowDepthTexture.getWidth(0) && srcDepth.getHeight(0) == this.glowDepthTexture.getHeight(0)) {
+			RenderSystem.getDevice().createCommandEncoder().copyTextureToTexture(srcDepth, this.glowDepthTexture, 0, 0, 0, 0, 0, this.glowDepthTexture.getWidth(0), this.glowDepthTexture.getHeight(0));
+		}
 	}
 
 	private void startRenderingGlow() {
@@ -66,8 +74,13 @@ public class GlowRenderer implements AutoCloseable {
 	}
 
 	private void tryUpdateDepthTexture() {
-		int neededWidth = this.client.getWindow().getWidth();
-		int neededHeight = this.client.getWindow().getHeight();
+		// The texture is sized from the main render target rather than the window because the
+		// copy source in updateGlowDepthTexDepth is the render target's depth texture. Window
+		// dimensions can diverge from render target dimensions for a frame when render loop
+		// ordering is altered by other mods or by resize events delivered outside the
+		// scheduled poll.
+		int neededWidth = this.client.getMainRenderTarget().width;
+		int neededHeight = this.client.getMainRenderTarget().height;
 
 		//If the texture hasn't been created or needs resizing
 		if (this.glowDepthTexture == null || this.glowDepthTexture.getWidth(0) != neededWidth || this.glowDepthTexture.getHeight(0) != neededHeight) {
